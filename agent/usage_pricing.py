@@ -782,6 +782,28 @@ _OFFICIAL_DOCS_PRICING: Dict[tuple[str, str], PricingEntry] = {
     ),
     (
         "fireworks",
+        "kimi-k3",
+    ): PricingEntry(
+        input_cost_per_million=Decimal("3.00"),
+        output_cost_per_million=Decimal("15.00"),
+        cache_read_cost_per_million=Decimal("0.30"),
+        source="official_docs_snapshot",
+        source_url="https://docs.fireworks.ai/serverless/pricing",
+        pricing_version="fireworks-pricing-2026-07",
+    ),
+    (
+        "fireworks",
+        "kimi-k3-fast",
+    ): PricingEntry(
+        input_cost_per_million=Decimal("4.50"),
+        output_cost_per_million=Decimal("22.50"),
+        cache_read_cost_per_million=Decimal("0.45"),
+        source="official_docs_snapshot",
+        source_url="https://docs.fireworks.ai/serverless/pricing",
+        pricing_version="fireworks-pricing-2026-07",
+    ),
+    (
+        "fireworks",
         "kimi-k2p7-code",
     ): PricingEntry(
         input_cost_per_million=Decimal("0.95"),

@@ -3566,6 +3566,18 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                 )
             except Exception:
                 pass
+            # Out-of-band provider state lives in those same response headers
+            # and is dropped by the parsed Message. This is the ONLY seam on
+            # the live streaming turn — create_anthropic_message's on_response
+            # hook is not on this path (that helper serves the non-streaming
+            # and summary calls), so header capture has to happen here or it
+            # never runs at all.
+            try:
+                agent._capture_anthropic_response_headers(
+                    getattr(raw_stream, "response", None)
+                )
+            except Exception:
+                pass
             _writer_token["value"] = claim_stream_writer(agent)
 
         def _accept_anthropic_event(_event: Any) -> bool:

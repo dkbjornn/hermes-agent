@@ -4889,6 +4889,27 @@ def _get_usage(agent) -> dict:
                 usage["dev_credits_spent_micros"] = int(spent)
         except Exception:
             pass
+    # Anthropic OAuth (subscription) usage — plan-bucket and metered-overage
+    # utilization from anthropic-ratelimit-unified-* response headers. This is
+    # the payload the desktop/TUI statusbar renders every turn (session.usage is
+    # only hit on a legacy resume path), so the block has to live HERE, not just
+    # on the RPC. Omitted when absent (API-key auth, non-Anthropic providers) so
+    # the client hides the readout instead of showing 0%. Fail-open.
+    try:
+        unified = agent.get_unified_usage_state() if agent is not None else None
+        if unified is not None and unified.has_data:
+            usage["unified"] = {
+                "five_hour_percent": round(unified.five_hour.percent, 1),
+                "seven_day_percent": round(unified.seven_day.percent, 1),
+                "overage_percent": round(unified.overage.percent, 1),
+                "on_overage": unified.on_overage,
+                "status": unified.status,
+                "representative_claim": unified.representative_claim,
+                "five_hour_resets_in": round(unified.five_hour.seconds_until_reset),
+                "seven_day_resets_in": round(unified.seven_day.seconds_until_reset),
+            }
+    except Exception:
+        pass
     return usage
 
 

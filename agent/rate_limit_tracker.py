@@ -54,6 +54,60 @@ class RateLimitBucket:
 
 
 @dataclass
+class UnifiedUsageWindow:
+    """One Anthropic unified-usage window (plan bucket or overage pool).
+
+    ``utilization`` is a 0..1 fraction as sent on the wire; ``percent`` exposes
+    the 0..100 form callers display.
+    """
+
+    utilization: float = 0.0
+    status: str = ""
+    reset_epoch: float = 0.0
+
+    @property
+    def percent(self) -> float:
+        return self.utilization * 100.0
+
+    @property
+    def seconds_until_reset(self) -> float:
+        if self.reset_epoch <= 0:
+            return 0.0
+        return max(0.0, self.reset_epoch - time.time())
+
+
+@dataclass
+class UnifiedUsageState:
+    """Anthropic OAuth (subscription) usage state.
+
+    Parsed from ``anthropic-ratelimit-unified-*`` response headers, which ride
+    along on every Messages response for OAuth-authenticated (Pro/Max plan)
+    traffic. This is the only reliable read on whether a request billed to the
+    subscription or to the metered overage pool: ``/api/oauth/usage`` is a
+    separate, aggressively rate-limited endpoint.
+
+    ``overage`` is the metered "extra usage" pool — non-zero utilization there
+    means the plan bucket was bypassed and the user is paying per token.
+    """
+
+    five_hour: UnifiedUsageWindow = field(default_factory=UnifiedUsageWindow)
+    seven_day: UnifiedUsageWindow = field(default_factory=UnifiedUsageWindow)
+    overage: UnifiedUsageWindow = field(default_factory=UnifiedUsageWindow)
+    status: str = ""
+    representative_claim: str = ""
+    captured_at: float = 0.0
+
+    @property
+    def has_data(self) -> bool:
+        return self.captured_at > 0
+
+    @property
+    def on_overage(self) -> bool:
+        """True when the metered extra-usage pool is being consumed."""
+        return self.overage.utilization > 0
+
+
+@dataclass
 class RateLimitState:
     """Full rate-limit state parsed from response headers."""
 
@@ -87,6 +141,40 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def parse_unified_usage_headers(
+    headers: Mapping[str, str],
+) -> Optional[UnifiedUsageState]:
+    """Parse ``anthropic-ratelimit-unified-*`` headers into a UnifiedUsageState.
+
+    These headers appear on Anthropic Messages responses for OAuth
+    (subscription) traffic and report plan-bucket utilization plus the metered
+    overage pool. Returns None when no unified headers are present — i.e. on
+    API-key traffic and on every non-Anthropic provider — so callers can hide
+    the readout rather than render zeros.
+    """
+    lowered = {k.lower(): v for k, v in headers.items()}
+
+    prefix = "anthropic-ratelimit-unified-"
+    if not any(k.startswith(prefix) for k in lowered):
+        return None
+
+    def _window(tag: str) -> UnifiedUsageWindow:
+        return UnifiedUsageWindow(
+            utilization=_safe_float(lowered.get(f"{prefix}{tag}-utilization")),
+            status=str(lowered.get(f"{prefix}{tag}-status") or ""),
+            reset_epoch=_safe_float(lowered.get(f"{prefix}{tag}-reset")),
+        )
+
+    return UnifiedUsageState(
+        five_hour=_window("5h"),
+        seven_day=_window("7d"),
+        overage=_window("overage"),
+        status=str(lowered.get(f"{prefix}status") or ""),
+        representative_claim=str(lowered.get(f"{prefix}representative-claim") or ""),
+        captured_at=time.time(),
+    )
 
 
 def parse_rate_limit_headers(

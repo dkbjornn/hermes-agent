@@ -11,7 +11,7 @@ import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { useI18n } from '@/i18n'
 import { Activity, AlertCircle, Clock, Command, FolderOpen, Globe, Hash, Loader2, Terminal } from '@/lib/icons'
 import type { RuntimeReadinessResult } from '@/lib/runtime-readiness'
-import { contextBarLabel, LiveDuration, usageContextLabel } from '@/lib/statusbar'
+import { contextBarLabel, LiveDuration, overageLabel, planUsageLabel, usageContextLabel } from '@/lib/statusbar'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
 import { resolveVersionStatus } from '@/lib/version-status'
@@ -48,7 +48,7 @@ import type { StatusResponse, UsageStats } from '@/types/hermes'
 import { CRON_ROUTE, SETTINGS_ROUTE, WEBHOOKS_ROUTE } from '../../routes'
 import type { StatusbarItem } from '../statusbar-controls'
 
-const EMPTY_USAGE = { calls: 0, input: 0, output: 0, total: 0 } as const
+const EMPTY_USAGE: UsageStats = { calls: 0, input: 0, output: 0, total: 0 }
 
 function workspaceLabel(cwd: string): string {
   const normalized = cwd.replace(/[\\/]+$/, '')
@@ -174,6 +174,12 @@ export function useStatusbarItems({
 
   const contextUsage = useMemo(() => usageContextLabel(currentUsage), [currentUsage])
   const contextBar = useMemo(() => contextBarLabel(currentUsage), [currentUsage])
+  // Anthropic OAuth (subscription) plan usage. Empty string whenever the
+  // backend sent no `unified` block — API-key auth, non-Anthropic providers, a
+  // session with no Anthropic call yet — so the item hides instead of claiming
+  // 0% usage.
+  const planUsage = useMemo(() => planUsageLabel(currentUsage), [currentUsage])
+  const overage = useMemo(() => overageLabel(currentUsage), [currentUsage])
 
   const publishContextUsage = useCallback(
     (snapshot: Pick<UsageStats, 'context_max' | 'context_percent' | 'context_used'>) => {
@@ -490,6 +496,24 @@ export function useStatusbarItems({
         ),
         toggleLabel: copy.toggleContextUsage,
         variant: 'menu'
+      },
+      {
+        // Anthropic subscription usage: plan buckets (5h · 7d) with an overage
+        // badge that only appears once metered extra usage is being consumed.
+        // Hidden entirely when the backend reports no unified block.
+        className: overage ? 'text-amber-600 hover:text-amber-600' : undefined,
+        detail: overage || undefined,
+        hidden: !planUsage,
+        id: 'plan-usage',
+        label: planUsage,
+        title: currentUsage.unified
+          ? `Plan usage — 5h ${planUsage.split(' · ')[0]}, 7d ${planUsage.split(' · ')[1]}` +
+            (currentUsage.unified.on_overage
+              ? ` · metered extra usage ${Math.round(currentUsage.unified.overage_percent)}%`
+              : ' · billing to subscription')
+          : undefined,
+        toggleLabel: copy.togglePlanUsage,
+        variant: 'text'
       },
       {
         detail: <LiveDuration since={sessionStartedAt} />,

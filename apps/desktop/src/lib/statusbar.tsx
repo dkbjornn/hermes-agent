@@ -58,6 +58,39 @@ export function contextBarLabel(usage: UsageStats): string {
   return `[${contextBar(usage.context_percent)}] ${pct}%`
 }
 
+/**
+ * Compact plan-usage readout for the statusbar: `27% · 42%` (5h · 7d).
+ *
+ * Returns '' when there is no unified data, so the caller hides the item
+ * rather than rendering a misleading `0% · 0%` on providers that never send
+ * these headers.
+ */
+export function planUsageLabel(usage: UsageStats): string {
+  const unified = usage.unified
+
+  if (!unified) {
+    return ''
+  }
+
+  const round = (n: number) => Math.max(0, Math.min(100, Math.round(n)))
+
+  return `${round(unified.five_hour_percent)}% · ${round(unified.seven_day_percent)}%`
+}
+
+/**
+ * Overage badge — rendered only while the metered extra-usage pool is being
+ * consumed, so a healthy plan-billed session stays visually quiet.
+ */
+export function overageLabel(usage: UsageStats): string {
+  const unified = usage.unified
+
+  if (!unified?.on_overage) {
+    return ''
+  }
+
+  return `+${Math.max(0, Math.round(unified.overage_percent))}% extra`
+}
+
 export function LiveDuration({ since }: { since: number | null | undefined }) {
   const [now, setNow] = useState(() => Date.now())
 

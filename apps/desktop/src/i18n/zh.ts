@@ -2621,6 +2621,7 @@ export const zh: Translations = {
       toggleBackendVersion: '后端版本',
       toggleCommandCenter: '命令中心',
       toggleContextUsage: '上下文用量',
+      togglePlanUsage: '套餐用量',
       toggleRunningTimer: '回合计时',
       toggleSessionTimer: '会话计时',
       toggleTerminal: '终端',

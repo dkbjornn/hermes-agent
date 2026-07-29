@@ -594,6 +594,24 @@ export interface SessionRuntimeInfo {
   yolo?: boolean
 }
 
+/**
+ * Anthropic OAuth (subscription) usage, from `anthropic-ratelimit-unified-*`
+ * response headers. Present only on Anthropic OAuth traffic — absent for
+ * API-key auth and every other provider, so treat `undefined` as "hide the
+ * readout" rather than "zero usage".
+ */
+export interface UnifiedUsage {
+  five_hour_percent: number
+  seven_day_percent: number
+  /** Metered extra-usage pool. Non-zero means the plan bucket was bypassed. */
+  overage_percent: number
+  on_overage: boolean
+  status: string
+  representative_claim: string
+  five_hour_resets_in: number
+  seven_day_resets_in: number
+}
+
 export interface UsageStats {
   calls: number
   context_max?: number
@@ -603,6 +621,7 @@ export interface UsageStats {
   input: number
   output: number
   total: number
+  unified?: UnifiedUsage
 }
 
 /** One graph node in the star map (learned skill or memory chunk). */

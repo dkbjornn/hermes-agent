@@ -56,13 +56,19 @@ describe('overageLabel', () => {
     expect(overageLabel(withUnified({ on_overage: true, overage_percent: 13 }))).toBe('+13% extra')
   })
 
+  it('warns without a percentage when the counter still lags at zero', () => {
+    // Anthropic flips overage-in-use the moment the plan bucket fills, while
+    // overage_percent stays 0 for the first requests. '+0% extra' would read as
+    // "nothing is being charged" at exactly the moment charging starts.
+    expect(overageLabel(withUnified({ on_overage: true, overage_percent: 0 }))).toBe('extra usage')
+  })
+
   it('is empty without unified data', () => {
     expect(overageLabel(BASE)).toBe('')
   })
 
-  it('rounds and floors the overage percentage', () => {
+  it('rounds the overage percentage', () => {
     expect(overageLabel(withUnified({ on_overage: true, overage_percent: 12.6 }))).toBe('+13% extra')
-    expect(overageLabel(withUnified({ on_overage: true, overage_percent: -1 }))).toBe('+0% extra')
   })
 
   it('honours the on_overage flag over a stale percentage', () => {

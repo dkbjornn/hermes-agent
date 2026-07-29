@@ -78,8 +78,13 @@ export function planUsageLabel(usage: UsageStats): string {
 }
 
 /**
- * Overage badge — rendered only while the metered extra-usage pool is being
- * consumed, so a healthy plan-billed session stays visually quiet.
+ * Overage badge — rendered only while metered extra usage is in play, so a
+ * healthy plan-billed session stays visually quiet.
+ *
+ * Anthropic flips `overage-in-use` the moment the plan bucket fills, but
+ * `overage_percent` lags and can still read 0 for the first requests. Showing
+ * `+0% extra` there would read as "nothing is being charged" at exactly the
+ * moment charging starts, so the zero case gets its own unambiguous wording.
  */
 export function overageLabel(usage: UsageStats): string {
   const unified = usage.unified
@@ -88,7 +93,9 @@ export function overageLabel(usage: UsageStats): string {
     return ''
   }
 
-  return `+${Math.max(0, Math.round(unified.overage_percent))}% extra`
+  const pct = Math.max(0, Math.round(unified.overage_percent))
+
+  return pct > 0 ? `+${pct}% extra` : 'extra usage'
 }
 
 export function LiveDuration({ since }: { since: number | null | undefined }) {

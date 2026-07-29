@@ -95,6 +95,12 @@ class UnifiedUsageState:
     overage: UnifiedUsageWindow = field(default_factory=UnifiedUsageWindow)
     status: str = ""
     representative_claim: str = ""
+    # Anthropic's authoritative "this request drew on extra usage" flag.
+    # Distinct from ``overage.utilization``, which can still read 0.0 on the
+    # first requests after the plan bucket fills — the flag flips immediately,
+    # the utilization number lags. Keying the UI off utilization alone silently
+    # under-reports paid usage, so this is the primary signal.
+    overage_in_use: bool = False
     captured_at: float = 0.0
 
     @property
@@ -103,8 +109,18 @@ class UnifiedUsageState:
 
     @property
     def on_overage(self) -> bool:
-        """True when the metered extra-usage pool is being consumed."""
-        return self.overage.utilization > 0
+        """True when metered extra usage is being consumed.
+
+        ``overage_in_use`` is authoritative and leads the utilization counter;
+        the utilization check is a fallback for responses that report spend
+        without the flag.
+        """
+        return self.overage_in_use or self.overage.utilization > 0
+
+    @property
+    def plan_exhausted(self) -> bool:
+        """True when a plan window is full and requests no longer bill to plan."""
+        return self.status == "rejected" or self.five_hour.status == "rejected"
 
 
 @dataclass
@@ -167,12 +183,18 @@ def parse_unified_usage_headers(
             reset_epoch=_safe_float(lowered.get(f"{prefix}{tag}-reset")),
         )
 
+    def _truthy(tag: str) -> bool:
+        return str(lowered.get(f"{prefix}{tag}", "")).strip().lower() in (
+            "true", "1", "yes",
+        )
+
     return UnifiedUsageState(
         five_hour=_window("5h"),
         seven_day=_window("7d"),
         overage=_window("overage"),
         status=str(lowered.get(f"{prefix}status") or ""),
         representative_claim=str(lowered.get(f"{prefix}representative-claim") or ""),
+        overage_in_use=_truthy("overage-in-use"),
         captured_at=time.time(),
     )
 

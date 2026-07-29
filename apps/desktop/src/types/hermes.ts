@@ -643,6 +643,13 @@ export interface UnifiedUsage {
   /** Metered extra-usage pool. Non-zero means the plan bucket was bypassed. */
   overage_percent: number
   on_overage: boolean
+  /**
+   * Anthropic's `overage-in-use` flag. Leads `overage_percent`, which can still
+   * read 0 on the first requests after the plan bucket fills.
+   */
+  overage_in_use?: boolean
+  /** A plan window is full (`status: rejected`) — requests no longer bill to plan. */
+  plan_exhausted?: boolean
   status: string
   representative_claim: string
   five_hour_resets_in: number

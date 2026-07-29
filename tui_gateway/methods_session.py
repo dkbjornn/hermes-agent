@@ -1228,6 +1228,8 @@ def _(rid, params: dict) -> dict:
                 "seven_day_percent": round(unified.seven_day.percent, 1),
                 "overage_percent": round(unified.overage.percent, 1),
                 "on_overage": unified.on_overage,
+                "overage_in_use": unified.overage_in_use,
+                "plan_exhausted": unified.plan_exhausted,
                 "status": unified.status,
                 "representative_claim": unified.representative_claim,
                 "five_hour_resets_in": round(unified.five_hour.seconds_until_reset),

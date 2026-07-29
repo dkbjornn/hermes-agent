@@ -8589,6 +8589,25 @@ def _(rid, params: dict) -> dict:
             usage["credits_lines"] = credits
     except Exception:
         pass
+    # Anthropic OAuth (subscription) usage — plan-bucket and metered-overage
+    # utilization captured from anthropic-ratelimit-unified-* response headers.
+    # Omitted entirely when absent (API-key traffic, non-Anthropic providers) so
+    # the client hides the readout rather than rendering zeros. Fail-open.
+    try:
+        unified = agent.get_unified_usage_state() if agent is not None else None
+        if unified is not None and unified.has_data:
+            usage["unified"] = {
+                "five_hour_percent": round(unified.five_hour.percent, 1),
+                "seven_day_percent": round(unified.seven_day.percent, 1),
+                "overage_percent": round(unified.overage.percent, 1),
+                "on_overage": unified.on_overage,
+                "status": unified.status,
+                "representative_claim": unified.representative_claim,
+                "five_hour_resets_in": round(unified.five_hour.seconds_until_reset),
+                "seven_day_resets_in": round(unified.seven_day.seconds_until_reset),
+            }
+    except Exception:
+        pass
     return _ok(rid, usage)
 
 

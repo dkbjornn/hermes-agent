@@ -3537,6 +3537,30 @@ class AIAgent:
         """Return the last captured RateLimitState, or None."""
         return self._rate_limit_state
 
+    def _capture_unified_usage(self, http_response: Any) -> None:
+        """Parse anthropic-ratelimit-unified-* headers and cache the state.
+
+        Anthropic reports plan-bucket and metered-overage utilization on every
+        Messages response for OAuth (subscription) traffic. Absent on API-key
+        traffic, so a miss leaves the last-known state rather than clearing it.
+        """
+        if http_response is None:
+            return
+        headers = getattr(http_response, "headers", None)
+        if not headers:
+            return
+        try:
+            from agent.rate_limit_tracker import parse_unified_usage_headers
+            state = parse_unified_usage_headers(headers)
+            if state is not None:
+                self._unified_usage_state = state
+        except Exception:
+            pass  # Never let header parsing break the agent loop
+
+    def get_unified_usage_state(self):
+        """Return the last captured UnifiedUsageState, or None."""
+        return getattr(self, "_unified_usage_state", None)
+
     def _capture_anthropic_response_headers(self, http_response: Any) -> None:
         """Capture out-of-band state from Anthropic Messages response headers.
 
@@ -3546,6 +3570,7 @@ class AIAgent:
         ``stream.response``. Fail-open: each capture swallows its own errors.
         """
         self._capture_rate_limits(http_response)
+        self._capture_unified_usage(http_response)
         self._capture_credits(http_response)
 
     def _capture_credits(self, http_response: Any) -> None:

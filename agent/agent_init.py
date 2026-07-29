@@ -880,6 +880,11 @@ def init_agent(
     # Rate limit tracking — updated from x-ratelimit-* response headers
     # after each API call.  Accessed by /usage slash command.
     agent._rate_limit_state: Optional["RateLimitState"] = None
+    # Anthropic OAuth (subscription) usage — updated from
+    # anthropic-ratelimit-unified-* response headers after each API call.
+    # None on API-key traffic and every non-Anthropic provider, so consumers
+    # can hide the readout rather than render zeros.
+    agent._unified_usage_state = None
 
     # Credits tracking (dev-only, L0 usage-aware-credits) — updated from
     # x-nous-credits-* response headers after each API call.  Session-start

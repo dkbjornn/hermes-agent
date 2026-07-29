@@ -2077,6 +2077,7 @@ export interface Translations {
       toggleBackendVersion: string
       toggleCommandCenter: string
       toggleContextUsage: string
+      togglePlanUsage: string
       toggleRunningTimer: string
       toggleSessionTimer: string
       toggleTerminal: string

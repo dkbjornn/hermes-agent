@@ -862,6 +862,7 @@ const MEDIA_MIME_TYPES = {
   '.mp4': 'video/mp4',
   '.ogg': 'audio/ogg',
   '.opus': 'audio/ogg; codecs=opus',
+  '.pdf': 'application/pdf',
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
   '.wav': 'audio/wav',
@@ -870,6 +871,7 @@ const MEDIA_MIME_TYPES = {
 }
 
 const PREVIEW_HTML_EXTENSIONS = new Set(['.html', '.htm'])
+const PREVIEW_PDF_EXTENSIONS = new Set(['.pdf'])
 const PREVIEW_WATCH_DEBOUNCE_MS = 120
 const LOCAL_PREVIEW_HOSTS = new Set(['0.0.0.0', '127.0.0.1', '::1', '[::1]', 'localhost'])
 const TEXT_PREVIEW_MAX_BYTES = 512 * 1024
@@ -2353,14 +2355,29 @@ const schedulePersistWindowState = debounce(persistWindowState, 250)
 // secondary mirror so pre-JSON installs migrate transparently on first read.
 const DESKTOP_ZOOM_STATE_PATH = path.join(app.getPath('userData'), 'zoom-state.json')
 
-function readZoomState() {
+// Distinguishes "never configured" (ENOENT — the only case that should ever
+// fall back to the shipped default AND persist it) from "the file exists but
+// couldn't be read this time" (disk contention, AV/backup scan, a momentary
+// I/O error, corrupt JSON). The two used to collapse into the same `null`,
+// which meant a transient read hiccup on an existing file with a real saved
+// zoom (e.g. 150%) silently reset the user to 90% AND wrote that 90% back
+// over their setting on the next restore call — every window `show` /
+// `restore` / `resized` / `moved` / `did-finish-load` is a chance to hit this.
+// See restorePersistedZoomLevel: only `missing: true` may persist a fallback.
+function readZoomState(): { level: number | null; missing: boolean } {
   try {
     const raw = JSON.parse(fs.readFileSync(DESKTOP_ZOOM_STATE_PATH, 'utf8'))
     const level = Number(raw?.zoomLevel)
 
-    return Number.isFinite(level) ? level : null
-  } catch {
-    return null
+    return { level: Number.isFinite(level) ? level : null, missing: false }
+  } catch (error) {
+    const missing = (error as NodeJS.ErrnoException)?.code === 'ENOENT'
+
+    if (!missing) {
+      rememberLog(`[zoom] json read failed (keeping on-disk value untouched): ${error?.message || error}`)
+    }
+
+    return { level: null, missing }
   }
 }
 
@@ -4904,7 +4921,8 @@ async function previewFileTarget(rawTarget, baseDir) {
   const metadata = previewFileMetadata(resolved, mimeType)
   const isHtml = PREVIEW_HTML_EXTENSIONS.has(ext)
   const isImage = mimeType.startsWith('image/')
-  const previewKind = isHtml ? 'html' : isImage ? 'image' : metadata.binary ? 'binary' : 'text'
+  const isPdf = PREVIEW_PDF_EXTENSIONS.has(ext) || mimeType === 'application/pdf'
+  const previewKind = isHtml ? 'html' : isImage ? 'image' : isPdf ? 'pdf' : metadata.binary ? 'binary' : 'text'
 
   return {
     binary: metadata.binary,
@@ -5566,7 +5584,7 @@ function restorePersistedZoomLevel(window) {
   // Prefer the JSON file — it survives crash recovery wiping Electron's
   // cache/storage folders (#56726). applyZoomLevel notifies the renderer so
   // the Appearance UI Scale control stays in sync.
-  const saved = readZoomState()
+  const { level: saved, missing } = readZoomState()
 
   if (saved != null) {
     applyZoomLevel(window.webContents, saved)
@@ -5574,9 +5592,24 @@ function restorePersistedZoomLevel(window) {
     return
   }
 
-  // No JSON yet: paint the shipped default immediately so a fresh install
-  // doesn't flash Chromium 100%, then try localStorage for pre-JSON installs
-  // and overwrite if a legacy value is there.
+  // The file exists but couldn't be read this time (disk contention, AV/backup
+  // scan, corrupt JSON, etc.) — NOT the same as never having been configured.
+  // Paint the shipped default in memory only so the window isn't left at
+  // Chromium's un-zoomed 100%, but do not touch the JSON: a real saved zoom
+  // (e.g. 150%) must survive a transient read failure. Without this branch,
+  // every subsequent show/restore/resize/did-finish-load call would persist
+  // this in-memory fallback and permanently clobber the user's setting — the
+  // "randomly resets to 90%" bug.
+  if (!missing) {
+    applyZoomLevel(window.webContents, DEFAULT_ZOOM_LEVEL)
+
+    return
+  }
+
+  // True first run (ENOENT): paint the shipped default immediately so a fresh
+  // install doesn't flash Chromium 100%, then try localStorage for pre-JSON
+  // installs and persist whichever value wins — this is the only path allowed
+  // to write a fallback into the JSON store.
   applyZoomLevel(window.webContents, DEFAULT_ZOOM_LEVEL)
 
   window.webContents
@@ -10333,7 +10366,7 @@ ipcMain.handle('hermes:notify', (_event, payload) => {
   // kind+session can arrive here twice. Collapse it at this single choke point.
   // Return true (not false): a notification for the event IS being shown by the
   // first caller, so the settings "send test" success probe stays honest.
-  if (isDuplicateNotification(`${payload?.kind ?? ''}:${payload?.sessionId ?? ''}`)) {
+  if (isDuplicateNotification(`${payload?.kind ?? ''}:${payload?.sessionId ?? payload?.tag ?? ''}`)) {
     return true
   }
 
@@ -10508,6 +10541,22 @@ ipcMain.handle('hermes:writeClipboard', (_event, text) => {
   clipboard.writeText(String(text || ''))
 
   return true
+})
+
+// Native save-location picker (profile export etc.) — the write itself happens
+// elsewhere (the backend, for profile archives); this only picks the path.
+ipcMain.handle('hermes:selectSavePath', async (_event, options: any = {}) => {
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: options?.title || 'Save',
+    defaultPath: options?.defaultPath ? String(options.defaultPath) : undefined,
+    filters: Array.isArray(options?.filters) ? options.filters : undefined
+  })
+
+  if (result.canceled || !result.filePath) {
+    return null
+  }
+
+  return result.filePath
 })
 
 // Paired reader for the GUI terminal's paste chord: the renderer's
